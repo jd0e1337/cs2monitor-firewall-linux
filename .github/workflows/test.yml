@@ -5,8 +5,12 @@ permissions:
 jobs:
   test:
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        base: ['debian:12-slim', 'debian:13-slim', 'ubuntu:24.04', 'archlinux:base', 'fedora:latest', 'opensuse/tumbleweed:latest']
     steps:
       - uses: actions/checkout@v4
-      - run: sudo apt-get update && sudo apt-get install -y nftables iproute2
-      - run: python3 -m unittest discover -s tests -v
-      - run: sudo unshare --net env CS2_DISPOSABLE_NETWORK=yes python3 tests/integration.py
+      - run: docker build --build-arg BASE=${{ matrix.base }} -f tests/Dockerfile -t cs2-linux-test .
+      - run: docker run --rm --network none cs2-linux-test
+      - run: docker run --rm --network none --cap-add NET_ADMIN -e CS2_DISPOSABLE_NETWORK=yes cs2-linux-test python3 tests/integration.py

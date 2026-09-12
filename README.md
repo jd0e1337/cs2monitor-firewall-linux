@@ -2,16 +2,25 @@
 
 Block unwanted CS2 servers on Linux. Uses the CS2monitor **Abuse Servers** list and nftables.
 
-**Supported:** Debian 12/13 and Ubuntu 24.04 with systemd, Python 3.9+ and nftables. Requires sudo. Active UFW or firewalld is not supported by this version; installation stops instead of changing their configuration.
+**Platforms:** Debian 12/13, Ubuntu 24.04, Arch Linux, Fedora and openSUSE Tumbleweed with systemd, Python 3.9+ and nftables. Manjaro and EndeavourOS use the Arch instructions but are not individually tested. Requires sudo. Active UFW or firewalld is not supported; installation stops instead of changing their configuration.
 
 ## Install
 
 1. Download the **tar.gz** from [Releases](https://github.com/jd0e1337/cs2monitor-firewall-linux/releases/latest) and extract it.
 2. Open a terminal in the extracted folder.
-3. Install the dependencies, then start installation:
+3. Install the dependencies for your distribution:
+
+| Distribution | Install dependencies |
+|---|---|
+| Debian / Ubuntu / Linux Mint | `sudo apt install python3 nftables ca-certificates` |
+| Arch / Manjaro / EndeavourOS | `sudo pacman -Syu --needed python nftables ca-certificates` |
+| Fedora | `sudo dnf install python3 nftables ca-certificates` |
+| openSUSE Tumbleweed | `sudo zypper install python3 nftables ca-certificates` |
+
+4. Check the system and install:
 
 ```sh
-sudo apt install python3 nftables
+python3 cs2monitor.py doctor
 sudo python3 cs2monitor.py install
 ```
 
@@ -69,4 +78,6 @@ This only downloads and renders the current list for inspection. It does not cha
 python3 -m unittest discover -s tests -v
 ```
 
-The integration test also exercises real nftables rules and TCP/UDP filtering. Run it only in a disposable network namespace (see the CI workflow). It must never run directly on a normal host.
+CI runs in Debian 12, Debian 13, Ubuntu 24.04, Arch Linux, Fedora and openSUSE Tumbleweed containers. It exercises distribution packages and real packet filtering on the runner kernel, not a full desktop boot. Linux Mint, Manjaro and EndeavourOS are compatible-family instructions, not individual test targets.
+
+The integration test exercises real nftables rules and TCP/UDP filtering. Run it only in a disposable network namespace (see the CI workflow). It must never run directly on a normal host. OpenRC, non-systemd WSL and immutable systems such as SteamOS are outside the supported installation path.

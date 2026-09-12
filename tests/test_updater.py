@@ -68,9 +68,19 @@ class Validation(unittest.TestCase):
             self.assertEqual(old.read_text(), 'old')
 
     def test_firewall_manager_refusal(self):
-        with patch.object(app.shutil,'which',return_value='/bin/tool'), patch.object(app.subprocess,'run') as run:
+        with patch.object(Path,'is_dir',return_value=True), patch.object(app.shutil,'which',return_value='/bin/tool'), patch.object(app.subprocess,'run') as run:
             run.return_value.returncode = 0
             with self.assertRaisesRegex(ValueError,'not supported'): app.check_environment()
+
+    def test_distribution_dependencies(self):
+        for info, expected in [({'ID':'arch'},'pacman -Syu'), ({'ID':'endeavouros','ID_LIKE':'arch'},'pacman -Syu'),
+                               ({'ID':'manjaro'},'pacman -Syu'), ({'ID':'ubuntu'},'apt install'),
+                               ({'ID':'fedora'},'dnf install'), ({'ID':'opensuse-tumbleweed'},'zypper install')]:
+            with self.subTest(info=info): self.assertIn(expected, app.dependency_command(info))
+
+    def test_requires_running_systemd(self):
+        with patch.object(Path,'is_dir',return_value=False), self.assertRaisesRegex(ValueError,'running systemd'):
+            app.check_environment()
 
     def test_lifecycle_files_and_uninstall_scope(self):
         with tempfile.TemporaryDirectory() as directory:

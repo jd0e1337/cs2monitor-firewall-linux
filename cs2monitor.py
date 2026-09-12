@@ -8,13 +8,14 @@ import json
 import os
 from pathlib import Path
 import shutil
+import shlex
 import subprocess
 import sys
 import tempfile
 import time
 import urllib.request
 
-VERSION = '1.0.0'
+VERSION = '1.1.0'
 URL = 'https://www.cs2monitor.com/api/blocklist/export?categories=abuse&includeDerived=true&includePorts=true'
 TABLE = 'cs2monitor'
 STATE = Path('/var/lib/cs2monitor-firewall')
@@ -117,13 +118,42 @@ def lock():
         yield
 
 
+def distribution():
+    values = {}
+    try:
+        for line in Path('/etc/os-release').read_text().splitlines():
+            if '=' in line and not line.startswith('#'):
+                key, value = line.split('=', 1)
+                values[key] = ' '.join(shlex.split(value))
+    except (OSError, ValueError):
+        pass
+    return values
+
+
+def dependency_command(info=None):
+    info = distribution() if info is None else info
+    families = [info.get('ID', ''), *info.get('ID_LIKE', '').split()]
+    for family in families:
+        if family in ('arch', 'manjaro', 'endeavouros'):
+            return 'sudo pacman -Syu --needed python nftables ca-certificates'
+        if family in ('debian', 'ubuntu', 'linuxmint'):
+            return 'sudo apt install python3 nftables ca-certificates'
+        if family in ('fedora', 'rhel', 'centos', 'rocky', 'almalinux'):
+            return 'sudo dnf install python3 nftables ca-certificates'
+        if family in ('opensuse', 'opensuse-tumbleweed', 'opensuse-leap', 'suse'):
+            return 'sudo zypper install python3 nftables ca-certificates'
+    return 'Install Python 3.9+, nftables, CA certificates and systemd using your distribution package manager.'
+
+
 def check_environment():
+    if not Path('/run/systemd/system').is_dir():
+        raise ValueError('A running systemd system is required, including for --manual installation. Containers, OpenRC and non-systemd WSL are not supported.')
     for tool in ('nft', 'systemctl'):
         if not shutil.which(tool):
-            raise ValueError(f'Missing {tool}; install nftables and systemd first')
+            raise ValueError(f'Missing {tool}. {dependency_command()}')
     for service in ('ufw', 'firewalld'):
         if subprocess.run(['systemctl', 'is-active', '--quiet', service], capture_output=True).returncode == 0:
-            raise ValueError(f'Active {service} is not supported in v1.0; no firewall changes made')
+            raise ValueError(f'Active {service} is not supported; no firewall changes made. Do not disable your firewall just to install this updater.')
 
 
 def table_exists():
@@ -234,10 +264,16 @@ def uninstall():
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('command', choices=['install', 'update', 'restore', 'status', 'uninstall', 'snapshot'])
+    parser.add_argument('command', choices=['install', 'update', 'restore', 'status', 'uninstall', 'snapshot', 'doctor'])
     parser.add_argument('--manual', action='store_true', help='Install without automatic updates')
     parser.add_argument('--yes', action='store_true', help='Confirm install or uninstall without prompting')
     args = parser.parse_args()
+    if args.command == 'doctor':
+        print('Distribution: ' + distribution().get('PRETTY_NAME', 'Unknown Linux'))
+        print('Dependencies: ' + dependency_command())
+        check_environment()
+        print('Prerequisites found. Installation will also validate nftables kernel support before applying rules.')
+        return
     if args.command == 'snapshot':
         print(render(download()), end='')
         return
