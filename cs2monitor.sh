@@ -4,7 +4,7 @@ set -Eeuo pipefail
 export LC_ALL=C
 export PATH=/usr/sbin:/usr/bin:/sbin:/bin
 
-VERSION=2.0.0
+VERSION=2.1.0
 URL='https://www.cs2monitor.com/api/blocklist/export?categories=abuse&includeDerived=true&includePorts=true'
 TABLE=cs2monitor
 STATE=/var/lib/cs2monitor-firewall
@@ -44,15 +44,52 @@ require_tools() {
     done
 }
 
+check_firewalls() {
+    local service properties key value loaded active
+    for service in ufw firewalld; do
+        loaded=; active=
+        properties=$(systemctl show "$service.service" --property=LoadState --property=ActiveState) || die "Cannot inspect $service.service through systemd"
+        while IFS='=' read -r key value; do
+            case $key in LoadState) loaded=$value ;; ActiveState) active=$value ;; esac
+        done <<< "$properties"
+        [[ -n $loaded && -n $active ]] || die "Incomplete systemd response for $service.service"
+        if [[ $loaded == loaded && ( $active == active || $active == activating || $active == reloading ) ]]; then
+            die "$service.service is loaded and $active in systemd. Check: systemctl status $service.service"
+        fi
+    done
+}
+
+install_dependencies() {
+    local tool package manager
+    local -a packages=()
+    for tool in curl jq nft flock timeout; do
+        if ! command -v "$tool" >/dev/null; then
+            case $tool in nft) package=nftables ;; flock) package=util-linux ;; timeout) package=coreutils ;; *) package=$tool ;; esac
+            packages+=("$package")
+        fi
+    done
+    if [[ ! -s /etc/ssl/certs/ca-certificates.crt && ! -s /etc/pki/tls/certs/ca-bundle.crt && ! -s /etc/ssl/ca-bundle.pem ]]; then packages+=(ca-certificates); fi
+    (( ${#packages[@]} )) || return 0
+    printf 'Installing missing dependencies: %s\n' "${packages[*]}"
+    for manager in apt-get pacman dnf zypper; do
+        command -v "$manager" >/dev/null || continue
+        case $manager in
+            apt-get)
+                apt-get update || die 'Package index update failed'
+                apt-get install -y -- "${packages[@]}" || die 'Dependency installation failed' ;;
+            pacman) pacman -S --needed --noconfirm -- "${packages[@]}" || die 'Dependency installation failed. Update Arch with sudo pacman -Syu, then retry.' ;;
+            dnf) dnf install -y -- "${packages[@]}" || die 'Dependency installation failed' ;;
+            zypper) zypper --non-interactive install -- "${packages[@]}" || die 'Dependency installation failed' ;;
+        esac
+        return
+    done
+    die "No supported package manager found. $(dependency_command)"
+}
+
 check_environment() {
     [[ -d /run/systemd/system ]] || die 'A running systemd system is required, also for --manual installation.'
     require_tools nft systemctl flock curl jq timeout install mktemp stat
-    local service
-    for service in ufw firewalld; do
-        if systemctl is-active --quiet "$service"; then
-            die "Active $service is not supported. No firewall changes made."
-        fi
-    done
+    check_firewalls
 }
 
 acquire_lock() {
@@ -260,6 +297,19 @@ main() {
         install|update|restore|status|uninstall|snapshot) ;;
         *) die "Unknown command: $command" ;;
     esac
+    if [[ $command == install ]]; then
+        (( EUID == 0 )) || die 'Run sudo bash cs2monitor.sh install (installs missing dependencies)'
+        [[ -d /run/systemd/system ]] || die 'A running systemd system is required'
+        require_tools systemctl
+        check_firewalls
+        if [[ $confirmed == false ]]; then
+            printf 'Install missing system packages and CS2monitor outbound firewall rules? Type INSTALL: '
+            read -r answer || die 'Cancelled'
+            [[ $answer == INSTALL ]] || die 'Cancelled'
+            confirmed=true
+        fi
+        install_dependencies
+    fi
     require_tools jq curl timeout nft flock mktemp stat
     umask 077
     make_work

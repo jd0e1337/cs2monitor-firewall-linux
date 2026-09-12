@@ -1,4 +1,6 @@
 #!/usr/bin/env bash
+# Mocks below are called indirectly by the sourced updater.
+# shellcheck disable=SC2329
 set -Eeuo pipefail
 # shellcheck source=../cs2monitor.sh
 source "$(dirname -- "$0")/../cs2monitor.sh"
@@ -26,6 +28,43 @@ expect_fail validate_json "$WORK/invalid.json" false
 [[ $(dependency_command fedora) == *dnf* ]]
 [[ $(dependency_command opensuse-tumbleweed) == *zypper* ]]
 expect_fail main update --manual
+
+# A successful systemctl exit code alone does not mean the unit is active.
+(
+    systemctl() { printf 'LoadState=not-found\nActiveState=inactive\n'; }
+    check_firewalls
+    systemctl() { printf 'LoadState=loaded\nActiveState=inactive\n'; }
+    check_firewalls
+    systemctl() { printf 'LoadState=loaded\nActiveState=active\n'; }
+    expect_fail check_firewalls
+    systemctl() { return 1; }
+    expect_fail check_firewalls
+    systemctl() { printf 'unexpected response\n'; }
+    expect_fail check_firewalls
+)
+
+# Mock package managers, never install packages or contact a repository in tests.
+for selected_manager in apt-get pacman dnf zypper; do
+    (
+        command() {
+            if [[ ${1:-} == -v ]]; then
+                case $2 in
+                    jq|nft) return 1 ;;
+                    apt-get|pacman|dnf|zypper) [[ $2 == "$selected_manager" ]]; return ;;
+                esac
+            fi
+            builtin command "$@"
+        }
+        apt-get() { printf 'apt-get %s\n' "$*" >> "$WORK/packages.log"; }
+        pacman() { printf 'pacman %s\n' "$*" >> "$WORK/packages.log"; }
+        dnf() { printf 'dnf %s\n' "$*" >> "$WORK/packages.log"; }
+        zypper() { printf 'zypper %s\n' "$*" >> "$WORK/packages.log"; }
+        install_dependencies
+        grep -q "$selected_manager .*jq nftables" "$WORK/packages.log"
+        apt-get() { return 1; }; pacman() { return 1; }; dnf() { return 1; }; zypper() { return 1; }
+        expect_fail install_dependencies
+    )
+done
 
 # Mock only kernel/system services for lifecycle tests; exercise the actual files.
 STATE="$WORK/state"; PROGRAM="$WORK/lib/cs2monitor.sh"; LEGACY_PROGRAM="$WORK/lib/cs2monitor.py"; UNITS="$WORK/units"

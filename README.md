@@ -10,22 +10,11 @@ Version 2 is written in **Bash**. Python is not required. HTTPS downloads use cu
 
 1. Download the **tar.gz** from [Releases](https://github.com/jd0e1337/cs2monitor-firewall-linux/releases/latest) and extract it.
 2. Open a terminal in the extracted folder.
-3. Install the dependencies for your distribution:
+3. Run `sudo bash cs2monitor.sh install`.
 
-| Distribution | Install dependencies |
-|---|---|
-| Debian / Ubuntu / Linux Mint | `sudo apt install bash curl jq nftables ca-certificates util-linux` |
-| Arch / Manjaro / EndeavourOS | `sudo pacman -Syu --needed bash curl jq nftables ca-certificates util-linux` |
-| Fedora | `sudo dnf install bash curl-minimal jq nftables ca-certificates util-linux` |
-| openSUSE Tumbleweed | `sudo zypper install bash curl jq nftables ca-certificates util-linux` |
+The installer detects and installs missing dependencies with your package manager after you confirm **INSTALL**. On Arch it uses the existing package database; if packages are unavailable, run `sudo pacman -Syu` and retry. It does not perform a full system upgrade automatically.
 
-4. Check the system and install:
-
-```sh
-bash cs2monitor.sh doctor
-sudo bash cs2monitor.sh install
-```
-
+`bash cs2monitor.sh doctor` is an optional read-only check. It never installs packages. An active firewall warning now includes the exact systemd unit and state; use the displayed `systemctl status` command to inspect it.
 Type **INSTALL** when asked. The first blocklist is applied immediately. Automatic updates run about one minute after boot and every three hours afterwards. The last successful list is restored on reboot, even without an internet connection.
 
 For manual updates only, use `sudo bash cs2monitor.sh install --manual` instead.
