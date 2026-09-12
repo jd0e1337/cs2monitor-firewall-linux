@@ -4,7 +4,7 @@ Block unwanted CS2 servers on Linux. Uses the CS2monitor **Abuse Servers** list 
 
 Version 2 is written in **Bash**. Python is not required. HTTPS downloads use curl, JSON validation uses jq, and firewall changes use nftables.
 
-**Platforms:** Debian 12/13, Ubuntu 24.04, Arch Linux, Fedora and openSUSE Tumbleweed with systemd, Bash 4.4+, curl, jq 1.6+ and nftables. Manjaro and EndeavourOS use the Arch instructions but are not individually tested. Requires sudo. Active UFW or firewalld is not supported; installation stops instead of changing their configuration.
+**Platforms:** Debian 12/13, Ubuntu 24.04, Arch Linux, Fedora and openSUSE Tumbleweed with systemd, Bash 4.4+, curl, jq 1.6+ and nftables. Manjaro and EndeavourOS use the Arch instructions but are not individually tested. Requires sudo. UFW and firewalld (nftables backend) are supported alongside the separate CS2monitor table. Their configuration is preserved.
 
 ## Install
 
@@ -12,10 +12,10 @@ Version 2 is written in **Bash**. Python is not required. HTTPS downloads use cu
 2. Open a terminal in the extracted folder.
 3. Run `sudo bash cs2monitor.sh install`.
 
-The installer detects and installs missing dependencies with your package manager after you confirm **INSTALL**. On Arch it uses the existing package database; if packages are unavailable, run `sudo pacman -Syu` and retry. It does not perform a full system upgrade automatically.
+The installer detects and installs missing dependencies with your package manager after you answer **y** at the **(y/N)** prompt. On Arch it uses the existing package database; if packages are unavailable, run `sudo pacman -Syu` and retry. It does not perform a full system upgrade automatically.
 
-`bash cs2monitor.sh doctor` is an optional read-only check. It never installs packages. An active firewall warning now includes the exact systemd unit and state; use the displayed `systemctl status` command to inspect it.
-Type **INSTALL** when asked. The first blocklist is applied immediately. Automatic updates run about one minute after boot and every three hours afterwards. The last successful list is restored on reboot, even without an internet connection.
+`bash cs2monitor.sh doctor` is an optional read-only check. It never installs packages. Active firewall services are reported for information and do not prevent installation.
+Press **y** to confirm. Enter, EOF and all other answers cancel; **No** is the default. The first blocklist is applied immediately. Automatic updates run about one minute after boot and every three hours afterwards. The last successful list is restored on reboot, even without an internet connection.
 
 For manual updates only, use `sudo bash cs2monitor.sh install --manual` instead.
 
@@ -48,7 +48,7 @@ Upgrading from version 1 works the same way: `sudo bash cs2monitor.sh install`. 
 sudo bash /usr/local/lib/cs2monitor-firewall/cs2monitor.sh uninstall
 ```
 
-Type **UNINSTALL**. This removes the CS2monitor firewall table, timer, services and saved list. Downloaded files and system journal logs remain. Other firewall rules are preserved.
+Confirm with **y** at **(y/N)**; Enter cancels. This removes the CS2monitor firewall table, timer, services and saved list. Downloaded files and system journal logs remain. Other firewall rules are preserved.
 
 ## Download a snapshot
 
@@ -61,7 +61,7 @@ This only downloads and renders the current list for inspection. It does not cha
 ## Notes
 
 - Firewall reloads by another tool can remove the CS2monitor table. Run `update` to restore it; the timer also rebuilds it on the next successful update.
-- Test support is intentionally limited to nftables without UFW/firewalld. The installer never disables another firewall manager.
+- UFW and firewalld coexistence is tested with real TCP/UDP filtering and reloads in disposable Debian containers. Rules remain in the separate `inet cs2monitor` table and are not listed by `ufw status` or `firewall-cmd`. Inspect them with `sudo nft list table inet cs2monitor`. The installer never disables either manager.
 - The first installation needs access to `www.cs2monitor.com`. No account or API key is needed.
 - Release downloads include a separate `SHA256SUMS` checksum file.
 

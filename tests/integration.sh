@@ -8,6 +8,28 @@ trap cleanup EXIT
 ip link set lo up
 ip addr add 193.23.195.8/32 dev lo
 ip addr add 8.8.8.8/32 dev lo
+case ${CS2_FIREWALL_TEST:-none} in
+    ufw)
+        ufw default allow outgoing
+        ufw allow out to 193.23.195.8 port 27013 proto tcp
+        ufw --force enable
+        ufw status | grep -q 'Status: active'
+        ;;
+    firewalld)
+        mkdir -p /run/dbus
+        dbus-daemon --system --fork
+        /usr/sbin/firewalld --nofork --nopid > "$WORK/firewalld.log" 2>&1 &
+        for ((attempt=0; attempt<100; attempt++)); do
+            if firewall-cmd --state >/dev/null 2>&1; then break; fi
+            sleep 0.1
+        done
+        firewall-cmd --state || { cat "$WORK/firewalld.log"; die 'firewalld did not start'; }
+        firewall-cmd --permanent --add-port=27013/tcp
+        firewall-cmd --reload
+        ;;
+    none) ;;
+    *) die 'Unknown test firewall' ;;
+esac
 nft add table inet unrelated
 fixture="$WORK/fixture.json"
 jq -n --argjson now "$(date +%s)" '{schemaVersion:2,categories:["abuse"],includePorts:true,includeDerived:true,generatedAt:($now*1000),count:4,items:[{type:"ip",value:"8.8.8.8"},{type:"subnet",value:"8.8.8.0/24"},{type:"server_address",value:"193.23.195.8:27013"},{type:"server_address",value:"193.23.195.8:27013"}]}' > "$fixture"
@@ -32,6 +54,17 @@ for protocol in TCP UDP; do
     probe 193.23.195.8 27014 "$protocol" true
     probe 8.8.8.8 27015 "$protocol" false
 done
+if [[ ${CS2_FIREWALL_TEST:-none} != none ]]; then
+    case $CS2_FIREWALL_TEST in
+        ufw) ufw reload ;;
+        firewalld) firewall-cmd --reload ;;
+    esac
+    table_exists
+    for protocol in TCP UDP; do
+        probe 193.23.195.8 27013 "$protocol" false
+        probe 193.23.195.8 27014 "$protocol" true
+    done
+fi
 jq '.items=.items[:2] | .count=2' "$fixture" > "$WORK/released.json"
 apply_list "$WORK/released.json"
 for protocol in TCP UDP; do probe 193.23.195.8 27013 "$protocol" true; done
@@ -47,6 +80,16 @@ probe 8.8.8.8 27016 UDP false
 nft delete table inet cs2monitor
 nft list table inet unrelated >/dev/null
 # Check generated services with the real systemd parser (no host installation).
+case ${CS2_FIREWALL_TEST:-none} in
+    ufw)
+        ufw status | grep -q 'Status: active'
+        ufw status | grep -q '27013/tcp'
+        ;;
+    firewalld)
+        firewall-cmd --state
+        firewall-cmd --query-port=27013/tcp
+        ;;
+esac
 create_units
 install -D -m755 "$SOURCE" "$PROGRAM"
 install -m644 "$WORK/restore.service" "$UNITS/cs2monitor-firewall-restore.service"

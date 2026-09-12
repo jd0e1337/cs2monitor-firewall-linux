@@ -28,6 +28,11 @@ expect_fail validate_json "$WORK/invalid.json" false
 [[ $(dependency_command fedora) == *dnf* ]]
 [[ $(dependency_command opensuse-tumbleweed) == *zypper* ]]
 expect_fail main update --manual
+for answer in '' n N no INSTALL garbage; do
+    expect_fail confirm 'Proceed?' <<< "$answer"
+done
+expect_fail confirm 'Proceed?' < /dev/null
+for answer in y Y yes YES Yes; do confirm 'Proceed?' <<< "$answer"; done
 
 # A successful systemctl exit code alone does not mean the unit is active.
 (
@@ -36,7 +41,7 @@ expect_fail main update --manual
     systemctl() { printf 'LoadState=loaded\nActiveState=inactive\n'; }
     check_firewalls
     systemctl() { printf 'LoadState=loaded\nActiveState=active\n'; }
-    expect_fail check_firewalls
+    check_firewalls
     systemctl() { return 1; }
     expect_fail check_firewalls
     systemctl() { printf 'unexpected response\n'; }

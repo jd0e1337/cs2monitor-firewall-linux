@@ -3,6 +3,16 @@ on: [push, pull_request]
 permissions:
   contents: read
 jobs:
+  managers:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        manager: [ufw, firewalld]
+    steps:
+      - uses: actions/checkout@v4
+      - run: docker build --build-arg MANAGERS=true -f tests/Dockerfile -t cs2-managers-test .
+      - run: docker run --rm --network none --cap-add NET_ADMIN -e CS2_DISPOSABLE_NETWORK=yes -e CS2_FIREWALL_TEST=${{ matrix.manager }} cs2-managers-test bash tests/integration.sh
   shellcheck:
     runs-on: ubuntu-latest
     steps:

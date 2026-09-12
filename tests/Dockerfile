@@ -5,6 +5,8 @@ RUN if command -v apt-get >/dev/null; then apt-get update && apt-get install -y 
     elif command -v dnf >/dev/null; then dnf install -y bash curl-minimal jq nftables iproute ca-certificates systemd util-linux socat diffutils && dnf clean all; \
     elif command -v zypper >/dev/null; then zypper --non-interactive install bash curl jq nftables iproute2 ca-certificates systemd util-linux socat diffutils && zypper clean --all; \
     else exit 1; fi
+ARG MANAGERS=false
+RUN if [ "$MANAGERS" = true ]; then apt-get update && apt-get install -y --no-install-recommends ufw firewalld dbus iptables && rm -rf /var/lib/apt/lists/*; fi
 WORKDIR /test
 COPY . .
 CMD ["bash", "tests/unit.sh"]

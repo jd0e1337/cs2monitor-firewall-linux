@@ -4,7 +4,7 @@ set -Eeuo pipefail
 export LC_ALL=C
 export PATH=/usr/sbin:/usr/bin:/sbin:/bin
 
-VERSION=2.1.0
+VERSION=2.2.0
 URL='https://www.cs2monitor.com/api/blocklist/export?categories=abuse&includeDerived=true&includePorts=true'
 TABLE=cs2monitor
 STATE=/var/lib/cs2monitor-firewall
@@ -18,6 +18,12 @@ SCRIPT_DIR=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)
 SOURCE="$SCRIPT_DIR/$(basename -- "${BASH_SOURCE[0]}")"
 
 die() { printf 'Error: %s\n' "$*" >&2; exit 1; }
+confirm() {
+    local answer
+    printf '%s (y/N) ' "$1"
+    read -r answer || return 1
+    case $answer in y|Y|yes|YES|Yes) return 0 ;; *) return 1 ;; esac
+}
 cleanup() { if [[ -n $WORK && -d $WORK ]]; then rm -r -- "$WORK"; fi; }
 make_work() { WORK=$(mktemp -d /tmp/cs2monitor-firewall.XXXXXXXX) || die 'Cannot create temporary directory'; }
 
@@ -54,7 +60,7 @@ check_firewalls() {
         done <<< "$properties"
         [[ -n $loaded && -n $active ]] || die "Incomplete systemd response for $service.service"
         if [[ $loaded == loaded && ( $active == active || $active == activating || $active == reloading ) ]]; then
-            die "$service.service is loaded and $active in systemd. Check: systemctl status $service.service"
+            printf '%s.service: %s; CS2monitor uses its own nftables table alongside it.\n' "$service" "$active"
         fi
     done
 }
@@ -281,7 +287,7 @@ uninstall_updater() {
 
 main() {
     (( BASH_VERSINFO[0] > 4 || (BASH_VERSINFO[0] == 4 && BASH_VERSINFO[1] >= 4) )) || die 'Bash 4.4+ is required'
-    local command=${1:-help} automatic=true confirmed=false answer
+    local command=${1:-help} automatic=true confirmed=false
     if (( $# )); then shift; fi
     while (( $# )); do
         case "$1" in
@@ -303,9 +309,7 @@ main() {
         require_tools systemctl
         check_firewalls
         if [[ $confirmed == false ]]; then
-            printf 'Install missing system packages and CS2monitor outbound firewall rules? Type INSTALL: '
-            read -r answer || die 'Cancelled'
-            [[ $answer == INSTALL ]] || die 'Cancelled'
+            confirm 'Install missing system packages and CS2monitor outbound firewall rules?' || die 'Cancelled'
             confirmed=true
         fi
         install_dependencies
@@ -319,9 +323,7 @@ main() {
     if [[ $command == snapshot ]]; then download_list "$WORK/list.json"; render_rules "$WORK/list.json" "$WORK/snapshot.nft"; cat "$WORK/snapshot.nft"; return; fi
     (( EUID == 0 )) || die 'Run this command with sudo'
     if [[ $confirmed == false && ( $command == install || $command == uninstall ) ]]; then
-        printf 'CS2monitor manages outbound IPv4 blocks for all local applications in its own nftables table.\nType %s to continue: ' "${command^^}"
-        read -r answer || die 'Cancelled'
-        [[ $answer == "${command^^}" ]] || die 'Cancelled'
+        confirm 'Remove CS2monitor rules, services and saved list?' || die 'Cancelled'
     fi
     acquire_lock
     case "$command" in install|update|restore) check_environment ;; esac
