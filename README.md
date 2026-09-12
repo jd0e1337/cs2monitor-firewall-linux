@@ -2,7 +2,9 @@
 
 Block unwanted CS2 servers on Linux. Uses the CS2monitor **Abuse Servers** list and nftables.
 
-**Platforms:** Debian 12/13, Ubuntu 24.04, Arch Linux, Fedora and openSUSE Tumbleweed with systemd, Python 3.9+ and nftables. Manjaro and EndeavourOS use the Arch instructions but are not individually tested. Requires sudo. Active UFW or firewalld is not supported; installation stops instead of changing their configuration.
+Version 2 is written in **Bash**. Python is not required. HTTPS downloads use curl, JSON validation uses jq, and firewall changes use nftables.
+
+**Platforms:** Debian 12/13, Ubuntu 24.04, Arch Linux, Fedora and openSUSE Tumbleweed with systemd, Bash 4.4+, curl, jq 1.6+ and nftables. Manjaro and EndeavourOS use the Arch instructions but are not individually tested. Requires sudo. Active UFW or firewalld is not supported; installation stops instead of changing their configuration.
 
 ## Install
 
@@ -12,21 +14,21 @@ Block unwanted CS2 servers on Linux. Uses the CS2monitor **Abuse Servers** list 
 
 | Distribution | Install dependencies |
 |---|---|
-| Debian / Ubuntu / Linux Mint | `sudo apt install python3 nftables ca-certificates` |
-| Arch / Manjaro / EndeavourOS | `sudo pacman -Syu --needed python nftables ca-certificates` |
-| Fedora | `sudo dnf install python3 nftables ca-certificates` |
-| openSUSE Tumbleweed | `sudo zypper install python3 nftables ca-certificates` |
+| Debian / Ubuntu / Linux Mint | `sudo apt install bash curl jq nftables ca-certificates util-linux` |
+| Arch / Manjaro / EndeavourOS | `sudo pacman -Syu --needed bash curl jq nftables ca-certificates util-linux` |
+| Fedora | `sudo dnf install bash curl-minimal jq nftables ca-certificates util-linux` |
+| openSUSE Tumbleweed | `sudo zypper install bash curl jq nftables ca-certificates util-linux` |
 
 4. Check the system and install:
 
 ```sh
-python3 cs2monitor.py doctor
-sudo python3 cs2monitor.py install
+bash cs2monitor.sh doctor
+sudo bash cs2monitor.sh install
 ```
 
 Type **INSTALL** when asked. The first blocklist is applied immediately. Automatic updates run about one minute after boot and every three hours afterwards. The last successful list is restored on reboot, even without an internet connection.
 
-For manual updates only, use `sudo python3 cs2monitor.py install --manual` instead.
+For manual updates only, use `sudo bash cs2monitor.sh install --manual` instead.
 
 ## What is blocked?
 
@@ -40,8 +42,8 @@ Rules affect **all applications on this Linux machine**. They do not filter inco
 ## Update and status
 
 ```sh
-sudo python3 /usr/local/lib/cs2monitor-firewall/cs2monitor.py update
-sudo python3 /usr/local/lib/cs2monitor-firewall/cs2monitor.py status
+sudo bash /usr/local/lib/cs2monitor-firewall/cs2monitor.sh update
+sudo bash /usr/local/lib/cs2monitor-firewall/cs2monitor.sh status
 journalctl -u cs2monitor-firewall-update.service -n 30
 ```
 
@@ -49,10 +51,12 @@ New valid lists replace old rules, including removal of released servers. If the
 
 To upgrade the program, download the new release and run its installation command again.
 
+Upgrading from version 1 works the same way: `sudo bash cs2monitor.sh install`. The installer replaces the old systemd commands, preserves the saved-list format and removes the old Python script. Use `--manual` again if you do not want automatic updates. Python itself is never uninstalled.
+
 ## Remove
 
 ```sh
-sudo python3 /usr/local/lib/cs2monitor-firewall/cs2monitor.py uninstall
+sudo bash /usr/local/lib/cs2monitor-firewall/cs2monitor.sh uninstall
 ```
 
 Type **UNINSTALL**. This removes the CS2monitor firewall table, timer, services and saved list. Downloaded files and system journal logs remain. Other firewall rules are preserved.
@@ -60,7 +64,7 @@ Type **UNINSTALL**. This removes the CS2monitor firewall table, timer, services 
 ## Download a snapshot
 
 ```sh
-python3 cs2monitor.py snapshot > cs2monitor-snapshot.nft
+bash cs2monitor.sh snapshot > cs2monitor-snapshot.nft
 ```
 
 This only downloads and renders the current list for inspection. It does not change the firewall. For applying the list without a timer, use the manual installation above.
@@ -70,12 +74,12 @@ This only downloads and renders the current list for inspection. It does not cha
 - Firewall reloads by another tool can remove the CS2monitor table. Run `update` to restore it; the timer also rebuilds it on the next successful update.
 - Test support is intentionally limited to nftables without UFW/firewalld. The installer never disables another firewall manager.
 - The first installation needs access to `www.cs2monitor.com`. No account or API key is needed.
-- Release archives include a `SHA256SUMS` checksum file.
+- Release downloads include a separate `SHA256SUMS` checksum file.
 
 ## Development
 
 ```sh
-python3 -m unittest discover -s tests -v
+bash tests/unit.sh
 ```
 
 CI runs in Debian 12, Debian 13, Ubuntu 24.04, Arch Linux, Fedora and openSUSE Tumbleweed containers. It exercises distribution packages and real packet filtering on the runner kernel, not a full desktop boot. Linux Mint, Manjaro and EndeavourOS are compatible-family instructions, not individual test targets.
