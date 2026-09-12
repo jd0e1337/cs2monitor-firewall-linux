@@ -1,0 +1,12 @@
+name: Test
+on: [push, pull_request]
+permissions:
+  contents: read
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: sudo apt-get update && sudo apt-get install -y nftables iproute2
+      - run: python3 -m unittest discover -s tests -v
+      - run: sudo unshare --net env CS2_DISPOSABLE_NETWORK=yes python3 tests/integration.py
